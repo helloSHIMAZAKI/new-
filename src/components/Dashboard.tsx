@@ -29,7 +29,8 @@ import {
   Code2,
   Terminal,
   ShieldAlert,
-  ArrowRight
+  ArrowRight,
+  Zap
 } from 'lucide-react';
 import { ObsOverlay } from './ObsOverlay';
 import { SetupGuide } from './SetupGuide';
@@ -90,7 +91,14 @@ export const Dashboard: React.FC = () => {
   const [customName, setCustomName] = useState('zaion');
   const [customAmount, setCustomAmount] = useState('1.00');
   const [customCurrency, setCustomCurrency] = useState<'USD' | 'KHR'>('USD');
-  const [customRemark, setCustomRemark] = useState(DEFAULT_REMARK);
+  const [customRemark, setCustomRemark] = useState('នេះលុយ');
+  const [testAnimation, setTestAnimation] = useState<AlertAnimation>('slide');
+  const [testTriggerSuccess, setTestTriggerSuccess] = useState<{
+    donorName: string;
+    formattedAmount: string;
+    ttsScript: string;
+    time: string;
+  } | null>(null);
   const [clearingWebhook, setClearingWebhook] = useState(false);
   const [webhookMsg, setWebhookMsg] = useState('');
   
@@ -250,7 +258,14 @@ export const Dashboard: React.FC = () => {
     }
   };
 
-  const triggerTestAlert = async (name: string, amount: number, remark?: string) => {
+  const triggerTestAlert = async (
+    name: string, 
+    amount: number, 
+    remark?: string, 
+    currency: 'USD' | 'KHR' = 'USD',
+    customTheme?: AlertTheme,
+    customAnim?: AlertAnimation
+  ) => {
     setIsTriggering(true);
     try {
       const res = await fetch('/api/test-alert', {
@@ -259,21 +274,41 @@ export const Dashboard: React.FC = () => {
         body: JSON.stringify({
           donorName: name,
           amount,
-          currency: 'USD',
+          currency,
           remark: (remark && remark.trim().length > 0) ? remark.trim() : DEFAULT_REMARK,
-          theme,
-          animation,
+          theme: customTheme || theme,
+          animation: customAnim || animation,
         }),
       });
       const data = await res.json();
       if (data.donation) {
         setDonations(prev => [data.donation, ...prev]);
+        setTestTriggerSuccess({
+          donorName: data.donation.donorName,
+          formattedAmount: data.donation.formattedAmount,
+          ttsScript: data.donation.ttsScript,
+          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        });
       }
     } catch (err) {
       console.error('Trigger test alert error:', err);
     } finally {
       setIsTriggering(false);
     }
+  };
+
+  const handleTriggerCustomSimulator = async () => {
+    const amt = parseFloat(customAmount) || 1.00;
+    const finalRemark = (customRemark && customRemark.trim().length > 0) ? customRemark.trim() : DEFAULT_REMARK;
+    await triggerTestAlert(customName || 'zaion', amt, finalRemark, customCurrency, theme, testAnimation);
+  };
+
+  const handleTestSimulatorVoiceOnly = () => {
+    const amt = parseFloat(customAmount) || 1.00;
+    const amountStr = customCurrency === 'KHR' ? `${amt.toLocaleString()} រៀល` : `${amt} ដុល្លារ`;
+    const finalRemark = (customRemark && customRemark.trim().length > 0) ? customRemark.trim() : DEFAULT_REMARK;
+    const phrase = `${thankPrefix} ${customName || 'zaion'} ${verb} ${amountStr} ${finalRemark}`;
+    speakKhmerTts(phrase, { volume: 1.0 });
   };
 
   const testKhmerVoiceOnly = () => {
@@ -398,6 +433,16 @@ export const Dashboard: React.FC = () => {
 
           <div className="flex flex-wrap items-center gap-2">
             <button
+              onClick={handleTriggerCustomSimulator}
+              disabled={isTriggering}
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 text-xs font-extrabold shadow-md shadow-emerald-500/20 transition-all active:scale-95 disabled:opacity-50"
+              title="Simulate custom donation alert to OBS and test TTS & visual animations"
+            >
+              <Zap className="w-3.5 h-3.5 fill-current" />
+              <span>⚡ Test Trigger Alert</span>
+            </button>
+
+            <button
               onClick={() => triggerTestAlert('zaion', 1.00)}
               disabled={isTriggering}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium border border-slate-700 transition-colors"
@@ -407,7 +452,7 @@ export const Dashboard: React.FC = () => {
             </button>
 
             <button
-              onClick={() => triggerTestAlert('HUN CHHING CHHING', 0.50)}
+              onClick={() => triggerTestAlert('HUN CHHING CHHING', 0.50, 'នេះលុយ')}
               disabled={isTriggering}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-xs font-medium border border-slate-700 transition-colors"
             >
@@ -416,11 +461,12 @@ export const Dashboard: React.FC = () => {
             </button>
 
             <button
-              onClick={testKhmerVoiceOnly}
+              onClick={handleTestSimulatorVoiceOnly}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium border border-slate-700 transition-colors"
+              title="Test current custom voice sentence"
             >
               <Volume2 className="w-3.5 h-3.5 text-teal-400" />
-              <span>Test Voice ("អរគុណច្រើនមេ")</span>
+              <span>Test Voice</span>
             </button>
 
             <button
@@ -428,7 +474,7 @@ export const Dashboard: React.FC = () => {
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-semibold border border-emerald-500/30 transition-colors"
             >
               <DollarSign className="w-3.5 h-3.5" />
-              <span>Custom Donation...</span>
+              <span>Custom Popup...</span>
             </button>
           </div>
         </div>
@@ -574,6 +620,262 @@ export const Dashboard: React.FC = () => {
                   <span>{soundStatusMsg.text}</span>
                 </div>
               )}
+
+              {/* Interactive Test Trigger Simulator Panel */}
+              <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 space-y-4 shadow-xl">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between pb-3 border-b border-slate-800 gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
+                      <Zap className="w-4 h-4 fill-current" />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-white text-sm flex items-center gap-2">
+                        <span>Test Trigger Simulator</span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                          Live Animation & TTS
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        Simulate custom donation alerts with custom text & amounts before going live
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Simulation Presets */}
+                <div>
+                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider mb-2">
+                    Quick Simulation Presets:
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomName('zaion');
+                        setCustomAmount('1.00');
+                        setCustomCurrency('USD');
+                        setCustomRemark('អរគុណច្រើនមេ');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 font-medium transition-colors"
+                    >
+                      zaion ($1.00)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomName('HUN CHHING CHHING');
+                        setCustomAmount('0.50');
+                        setCustomCurrency('USD');
+                        setCustomRemark('នេះលុយ');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 font-medium transition-colors"
+                    >
+                      HUN CHHING CHHING ($0.50)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomName('Sokha');
+                        setCustomAmount('10000');
+                        setCustomCurrency('KHR');
+                        setCustomRemark('ជូនពរហេងៗមេ!');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 font-medium transition-colors"
+                    >
+                      Sokha (10,000 ៛)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomName('VIP Fan');
+                        setCustomAmount('25.00');
+                        setCustomCurrency('USD');
+                        setCustomRemark('Keep streaming! 🔥');
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 font-medium transition-colors"
+                    >
+                      VIP Fan ($25.00)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Inputs Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                  {/* Donor Name */}
+                  <div className="sm:col-span-5 space-y-1">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Donor Name
+                    </label>
+                    <input
+                      type="text"
+                      value={customName}
+                      onChange={(e) => setCustomName(e.target.value)}
+                      placeholder="e.g. zaion, HUN CHHING CHHING"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                    />
+                  </div>
+
+                  {/* Amount */}
+                  <div className="sm:col-span-4 space-y-1">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Donation Amount
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0.01"
+                      value={customAmount}
+                      onChange={(e) => setCustomAmount(e.target.value)}
+                      placeholder="1.00"
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 font-mono"
+                    />
+                  </div>
+
+                  {/* Currency */}
+                  <div className="sm:col-span-3 space-y-1">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Currency
+                    </label>
+                    <select
+                      value={customCurrency}
+                      onChange={(e) => setCustomCurrency(e.target.value as 'USD' | 'KHR')}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-500 font-medium"
+                    >
+                      <option value="USD">USD ($)</option>
+                      <option value="KHR">KHR (៛)</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Entrance Animation Selector for Test */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-semibold text-slate-300">
+                    Entrance Animation Style:
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {(['slide', 'bounce', 'fade', 'zoom'] as AlertAnimation[]).map((anim) => (
+                      <button
+                        key={anim}
+                        type="button"
+                        onClick={() => setTestAnimation(anim)}
+                        className={`py-1.5 px-2 rounded-lg text-xs font-medium capitalize border transition-all text-center ${
+                          testAnimation === anim
+                            ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300 font-bold'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        {anim}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Custom Remark */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-semibold text-slate-300">
+                      Custom Remark / Message
+                    </label>
+                    <span className="text-[10px] text-slate-500">
+                      Defaults to "អរគុណច្រើនមេ" if empty
+                    </span>
+                  </div>
+                  <input
+                    type="text"
+                    value={customRemark}
+                    onChange={(e) => setCustomRemark(e.target.value)}
+                    placeholder="e.g. នេះលុយ or អរគុណច្រើនមេ"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white font-khmer placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  />
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[10px] text-slate-500">Presets:</span>
+                    {[
+                      'អរគុណច្រើនមេ',
+                      'នេះលុយ',
+                      'ជូនពរហេងៗមេ!',
+                      'Keep streaming! 🔥'
+                    ].map((chip) => (
+                      <button
+                        key={chip}
+                        type="button"
+                        onClick={() => setCustomRemark(chip)}
+                        className="px-2 py-0.5 rounded text-[11px] font-khmer bg-slate-950 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-emerald-400 transition-colors"
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live Speech Preview Card */}
+                <div className="p-3 bg-slate-950/70 border border-emerald-500/20 rounded-xl space-y-1">
+                  <div className="flex items-center gap-2 text-xs text-emerald-400 font-semibold">
+                    <Volume2 className="w-3.5 h-3.5" />
+                    <span>Khmer Voice TTS Speech Preview:</span>
+                  </div>
+                  <p className="text-xs text-slate-200 font-khmer font-medium leading-relaxed">
+                    «{thankPrefix} {customName || 'zaion'} {verb} {customCurrency === 'KHR' ? `${(parseFloat(customAmount) || 0).toLocaleString()} រៀល` : `${parseFloat(customAmount) || 0} ដុល្លារ`} {(customRemark && customRemark.trim().length > 0) ? customRemark.trim() : DEFAULT_REMARK}»
+                  </p>
+                </div>
+
+                {/* Primary Action Buttons Row */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={handleTriggerCustomSimulator}
+                    disabled={isTriggering}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-gradient-to-r from-emerald-500 via-teal-400 to-emerald-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs shadow-lg shadow-emerald-500/20 transition-all active:scale-[0.99] disabled:opacity-50"
+                  >
+                    <Zap className="w-4 h-4 fill-current" />
+                    <span>{isTriggering ? 'Dispatching to OBS...' : '⚡ Test Trigger Alert (Visual + Sound + TTS)'}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleTestSimulatorVoiceOnly}
+                    className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"
+                    title="Test Khmer voice synthesis only"
+                  >
+                    <Volume2 className="w-3.5 h-3.5 text-teal-400" />
+                    <span>Test Voice</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => playPresetSound(soundPreset, soundVolume)}
+                    className="flex items-center justify-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"
+                    title="Test alert sound effect"
+                  >
+                    <Bell className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Test Sound</span>
+                  </button>
+                </div>
+
+                {/* Live Confirmation Alert */}
+                {testTriggerSuccess && (
+                  <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs flex items-start justify-between gap-3 text-emerald-300">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-1.5 font-bold">
+                        <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+                        <span>Alert Dispatched at {testTriggerSuccess.time}!</span>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        Sent to OBS Browser Source • Donor: <strong className="text-white">{testTriggerSuccess.donorName}</strong> ({testTriggerSuccess.formattedAmount})
+                      </p>
+                      <p className="text-[11px] text-emerald-400/90 font-khmer">
+                        Speech: «{testTriggerSuccess.ttsScript}»
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setTestTriggerSuccess(null)}
+                      className="text-slate-400 hover:text-white p-1"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Right: Customization Controls & Theme Picker */}

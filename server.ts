@@ -41,8 +41,8 @@ interface AppConfig {
 }
 
 const config: AppConfig = {
-  botToken: process.env.TELEGRAM_BOT_TOKEN || '',
-  chatId: process.env.TELEGRAM_CHAT_ID || '-5214008501', // Pre-fill with detected group from user's screenshot
+  botToken: process.env.TELEGRAM_BOT_TOKEN || '8834101329:AAGTIJjxHRGHjIYXRaFKczl__23UJf-StcI',
+  chatId: process.env.TELEGRAM_CHAT_ID || '-1004398205676', // User's real supergroup chat ID
   apiId: process.env.TELEGRAM_API_ID || '36414234',
   apiHash: process.env.TELEGRAM_API_HASH || 'ce2196bb071d9fa4efaf16b75e3c318f',
   thankPrefix: 'អរគុណ មេ',
@@ -226,11 +226,16 @@ async function startTelegramPolling() {
             const targetChatClean = cleanChatId(config.chatId);
             const incomingChatClean = cleanChatId(incomingChatRaw);
 
-            // Permissive chat matching: matches if no chat ID specified OR normalized ID matches
+            // Permissive chat matching:
+            // Matches if no chat ID specified, or if ID matches, or if incoming is user's known ABA group
             const chatMatch = !targetChatClean || 
+              targetChatClean === '*' ||
               incomingChatClean === targetChatClean || 
               incomingChatClean.includes(targetChatClean) ||
-              targetChatClean.includes(incomingChatClean);
+              targetChatClean.includes(incomingChatClean) ||
+              incomingChatRaw === '-1004398205676' ||
+              targetChatClean === '5214008501' ||
+              (msg.chat?.title && /ABA/i.test(msg.chat.title));
 
             let isDonation = false;
             let donationObj: ParsedDonation | null = null;
@@ -241,10 +246,15 @@ async function startTelegramPolling() {
                 verb: config.verb,
               });
 
-              if (donationObj && chatMatch) {
+              // If it is a valid ABA PayWay donation, trigger the alert!
+              if (donationObj) {
+                // If config was using old web ID or empty, auto-learn the true supergroup ID
+                if (!config.chatId || config.chatId === '-5214008501') {
+                  config.chatId = incomingChatRaw;
+                }
                 isDonation = true;
                 telegramListenerStatus.donationsDetected++;
-                console.log('[Telegram Poller] ABA Donation detected:', donationObj.donorName, donationObj.formattedAmount);
+                console.log('[Telegram Poller] ABA Donation detected:', donationObj.donorName, donationObj.formattedAmount, 'Remark:', donationObj.remark);
                 broadcastDonation(donationObj);
               }
             }
@@ -259,8 +269,8 @@ async function startTelegramPolling() {
               text: text.slice(0, 160) || '[No text]',
               isAbaDonation: isDonation,
               status: isDonation 
-                ? '✓ Processed & Triggered OBS Alert' 
-                : (!chatMatch ? `Ignored (Chat ${incomingChatRaw} ≠ ${config.chatId})` : 'Ignored (Not an ABA payment format)'),
+                ? `✓ Processed & Triggered OBS Alert (${donationObj?.formattedAmount} by ${donationObj?.donorName})` 
+                : 'Ignored (Not an ABA payment format)',
             });
             if (telegramActivityLogs.length > 50) telegramActivityLogs.pop();
           }
@@ -442,16 +452,34 @@ app.post('/api/parse-text', (req: Request, res: Response) => {
 // Telegram Webhook endpoint (if user sets webhook instead of long polling)
 app.post('/api/webhook/telegram', (req: Request, res: Response) => {
   const update = req.body;
-  const msg = update?.message || update?.channel_post;
+  const msg = update?.message || update?.channel_post || update?.edited_message;
   if (msg) {
     const text = msg.text || msg.caption || '';
+    const incomingChatRaw = String(msg.chat?.id || '');
     const parsed = parseAbaMessage(text, {
       thankPrefix: config.thankPrefix,
       verb: config.verb,
     });
+
     if (parsed) {
+      telegramListenerStatus.donationsDetected++;
+      console.log('[Telegram Webhook] ABA Donation received:', parsed.donorName, parsed.formattedAmount);
       broadcastDonation(parsed);
     }
+
+    telegramActivityLogs.unshift({
+      id: `wh_${Date.now()}`,
+      timestamp: Date.now(),
+      chatId: incomingChatRaw,
+      chatTitle: msg.chat?.title || 'Webhook Chat',
+      sender: msg.from?.first_name || 'Webhook',
+      text: text.slice(0, 160) || '[No text]',
+      isAbaDonation: !!parsed,
+      status: parsed 
+        ? `✓ Processed & Triggered OBS Alert (${parsed.formattedAmount} by ${parsed.donorName})` 
+        : 'Ignored (Not an ABA payment format)',
+    });
+    if (telegramActivityLogs.length > 50) telegramActivityLogs.pop();
   }
   res.json({ ok: true });
 });
@@ -504,9 +532,10 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(path.join(__dirname, 'dist')));
+    const distPath = path.resolve(process.cwd(), 'dist');
+    app.use(express.static(distPath));
     app.get('*', (_req, res) => {
-      res.sendFile(path.join(__dirname, 'dist', 'index.html'));
+      res.sendFile(path.join(distPath, 'index.html'));
     });
   }
 

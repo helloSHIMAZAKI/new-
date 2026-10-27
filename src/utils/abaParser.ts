@@ -88,10 +88,10 @@ export function parseAbaMessage(
   }
 
   // Extract Remark / Note / Message:
-  // e.g. "Remark: This is a test message" or "Description: ..." or "Note: ..."
-  const remarkMatch = raw.match(/(?:Remark|Description|Note|Msg|សារ|ំណត់សម្គាល់):?\s*([^\n\r]+)/i);
+  // e.g. "Remark: នេះលុយ . Trx. ID: 179309612081729, APV: 271810."
+  const remarkMatch = raw.match(/(?:Remark|Description|Note|Msg|សារ|ចំណាំ|ំណត់សម្គាល់):?\s*(.+?)(?=\s*\.?\s*(?:Trx\.?\s*ID|APV:|via\s+ABA|$|\n|\r))/i);
   if (remarkMatch) {
-    remark = remarkMatch[1].trim();
+    remark = remarkMatch[1].trim().replace(/\s*\.+$/, '');
   }
 
   // Pattern 1: Standard ABA PayWay Bot English format

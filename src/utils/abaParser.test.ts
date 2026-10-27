@@ -47,7 +47,21 @@ test('buildKhmerTtsScript defaults to អរគុណច្រើនមេ when 
   assert.equal(script, 'អរគុណ មេ zaion បានឧបត្ថម្ភ 1 ដុល្លារ អរគុណច្រើនមេ');
 });
 
+test('parseAbaMessage correctly parses inline Remark before Trx ID without including Trx ID in remark', () => {
+  const rawMsg = '$1.00 paid by HUN CHHING CHHING (*280) on Oct 27, 05:15 PM via ABA PAY at HUN CHHING CHHING. Remark: នេះលុយ . Trx. ID: 179309612081729, APV: 271810.';
+  const result = parseAbaMessage(rawMsg);
+
+  assert.ok(result !== null);
+  assert.equal(result.amount, 1.00);
+  assert.equal(result.donorName, 'HUN CHHING CHHING');
+  assert.equal(result.remark, 'នេះលុយ');
+  assert.equal(result.trxId, '179309612081729');
+  assert.equal(result.apv, '271810');
+  assert.equal(result.ttsScript, 'អរគុណ មេ HUN CHHING CHHING បានឧបត្ថម្ភ 1 ដុល្លារ នេះលុយ');
+});
+
 test('parseAbaMessage returns null for non-payment messages', () => {
   const chatMsg = 'Hello everyone in the group';
   assert.equal(parseAbaMessage(chatMsg), null);
 });
+
